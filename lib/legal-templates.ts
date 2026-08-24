@@ -13,9 +13,9 @@ export const defaultLegalProviderProfile: LegalProviderProfile = {
   legalName: "Ellen Pedreira Neri",
   taxId: "",
   address: "",
-  email: "curio.educacao@gmail.com",
+  email: "contato.plumareli@gmail.com",
   phone: "",
-  privacyContact: "curio.educacao@gmail.com",
+  privacyContact: "contato.plumareli@gmail.com",
 };
 
 function stringValue(value: unknown) {
