@@ -132,6 +132,9 @@ export function PublicTrustSection() {
           <div>
             <strong>Quer entender se o Plumareli combina com a rotina do aluno?</strong>
             <span>Comece pelo contato inicial. Você informa só o essencial e a equipe explica o acompanhamento antes da etapa de matrícula.</span>
+            <span>
+              Contato: <a href="mailto:contato.plumareli@gmail.com">contato.plumareli@gmail.com</a> · Instagram: <a href="https://www.instagram.com/plumareli/" target="_blank" rel="noreferrer">@plumareli</a>
+            </span>
           </div>
           <a className="button button-primary" href="#quero-conhecer">Quero conhecer o Plumareli</a>
         </div>
