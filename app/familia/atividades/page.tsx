@@ -30,7 +30,12 @@ export default async function FamilyActivitiesPage({ searchParams }: { searchPar
   for (const item of notebookRows) {
     const path = item.notebook_activities?.worksheet_path;
     if (!path) continue;
-    const { data } = await supabase.storage.from("teacher-materials").createSignedUrl(path, 60 * 20);
+    const normalizedPath = String(path);
+    if (normalizedPath.startsWith("/") || /^https?:\/\//i.test(normalizedPath)) {
+      worksheetUrls.set(item.id, normalizedPath);
+      continue;
+    }
+    const { data } = await supabase.storage.from("teacher-materials").createSignedUrl(normalizedPath, 60 * 20);
     if (data?.signedUrl) worksheetUrls.set(item.id, data.signedUrl);
   }
   const submittedUrls = new Map<string, string>();
