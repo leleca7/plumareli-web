@@ -57,7 +57,9 @@ export default async function TeacherMaterialsPage({
     ...(notebooks ?? []).filter((item: any) => item.worksheet_path).map((item: any) => ({ key: `notebook-${item.id}`, path: item.worksheet_path })),
   ];
   const signedEntries = await Promise.all(fileItems.map(async (item) => {
-    const { data } = await supabase.storage.from("teacher-materials").createSignedUrl(item.path, 60 * 30);
+    const path = String(item.path || "");
+    if (path.startsWith("/") || /^https?:\/\//i.test(path)) return [item.key, path] as const;
+    const { data } = await supabase.storage.from("teacher-materials").createSignedUrl(path, 60 * 30);
     return [item.key, data?.signedUrl || ""] as const;
   }));
   const signedUrls = new Map(signedEntries);
