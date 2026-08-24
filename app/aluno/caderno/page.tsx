@@ -31,8 +31,13 @@ export default async function StudentNotebookPage({ searchParams }: { searchPara
   for (const row of rows ?? []) {
     const activity: any = Array.isArray((row as any).notebook_activities) ? (row as any).notebook_activities[0] : (row as any).notebook_activities;
     if (activity?.worksheet_path) {
-      const { data } = await supabase.storage.from("teacher-materials").createSignedUrl(activity.worksheet_path, 60 * 20);
-      if (data?.signedUrl) worksheetUrls.set(row.id, data.signedUrl);
+      const path = String(activity.worksheet_path);
+      if (path.startsWith("/") || /^https?:\/\//i.test(path)) {
+        worksheetUrls.set(row.id, path);
+      } else {
+        const { data } = await supabase.storage.from("teacher-materials").createSignedUrl(path, 60 * 20);
+        if (data?.signedUrl) worksheetUrls.set(row.id, data.signedUrl);
+      }
     }
     if (row.submission_photo_path) {
       const { data } = await supabase.storage.from("family-uploads").createSignedUrl(row.submission_photo_path, 60 * 20);
