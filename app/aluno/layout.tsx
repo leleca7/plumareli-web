@@ -2,10 +2,8 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/app-shell";
 import { CurioFirstVisitGuide } from "@/components/curio-first-visit-guide";
 import { CurioPlayfulSoundEffects } from "@/components/curio-playful-sound-effects";
-import { MonthlyInterestPrompt } from "@/components/monthly-interest-prompt";
 import { StudentLearningSupport } from "@/components/student-learning-support";
 import { getCurrentStudent } from "@/lib/student";
-import { shouldShowMonthlyInterest } from "@/lib/monthly-interest";
 import "./student-workspace.css";
 import "./student-profile-extra.css";
 import "./student-delight.css";
@@ -18,14 +16,13 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
   const { viewer, student, supabase } = await getCurrentStudent();
-  const [{ data: game }, { data: support }, showInterest] = await Promise.all([
+  const [{ data: game }, { data: support }] = await Promise.all([
     student
       ? supabase.from("student_game_profiles").select("stars,level_name,avatar_character_id,characters(name,assets)").eq("student_id", student.id).maybeSingle()
       : Promise.resolve({ data: null } as any),
     student
       ? supabase.from("student_support_preferences").select("reading_autonomy,guided_mode,audio_instructions").eq("student_id", student.id).maybeSingle()
       : Promise.resolve({ data: null } as any),
-    shouldShowMonthlyInterest(supabase, viewer.user.id, "student"),
   ]);
 
   const name = student?.preferred_name || student?.full_name || viewer.profile?.preferred_name || viewer.profile?.full_name;
@@ -53,7 +50,6 @@ export default async function StudentLayout({ children }: { children: React.Reac
         {children}
         <CurioFirstVisitGuide role="student" viewerId={viewer.user.id} />
         <CurioPlayfulSoundEffects viewerId={viewer.user.id} />
-        {showInterest ? <MonthlyInterestPrompt role="student" /> : null}
       </AppShell>
     </div>
   );
