@@ -39,6 +39,7 @@ export function MultiStudentPicker({
 
   return (
     <div className="form-stack compact-form">
+      {[...selected].map((id) => <input key={id} type="hidden" name={name} value={id} />)}
       <div className="flex space-between gap-8 wrap">
         <small className="muted">{selected.size ? `${selected.size} aluno(s) selecionado(s)` : "Escolha um ou mais alunos"}</small>
         <button className="button button-ghost button-small" type="button" onClick={toggleAll}>
@@ -50,7 +51,6 @@ export function MultiStudentPicker({
           <label className="teacher-student-choice" key={student.id}>
             <input
               type="checkbox"
-              name={name}
               value={student.id}
               checked={selected.has(student.id)}
               onChange={() => toggle(student.id)}
