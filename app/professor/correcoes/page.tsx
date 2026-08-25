@@ -31,8 +31,9 @@ export default async function CorrectionsPage({ searchParams }: { searchParams: 
         mission_students(id,due_at,mission_id,missions(title)),
         answers(id,answer_text,score,reviewed_at,question_id,mission_questions(id,prompt,question_type,primary_skill_id,skills(name)))
       `)
-      .eq("review_status", "pending")
-      .order("submitted_at", { ascending: true }),
+      .in("review_status", ["pending", "reviewed"])
+      .order("submitted_at", { ascending: false })
+      .limit(200),
     supabase
       .from("notebook_assignments")
       .select("id,student_id,status,due_at,submitted_at,submission_photo_path,score,students(preferred_name,full_name),notebook_activities(title,description)")
@@ -47,7 +48,9 @@ export default async function CorrectionsPage({ searchParams }: { searchParams: 
       .order("created_at", { ascending: true }),
   ]);
 
-  const missionPending = (submissions ?? []).filter((submission: any) => (submission.answers ?? []).some((answer: any) => !answer.reviewed_at));
+  const missionRows = (submissions ?? []).filter((submission: any) =>
+    submission.review_status === "reviewed" || (submission.answers ?? []).some((answer: any) => !answer.reviewed_at)
+  );
   const now = Date.now();
   const assessmentPending = (assessmentRows ?? []).filter((item: any) => {
     if (item.reviewed_at || item.status === "reviewed") return false;
@@ -64,27 +67,28 @@ export default async function CorrectionsPage({ searchParams }: { searchParams: 
     if (data?.signedUrl) notebookFiles.set(assignment.id, data.signedUrl);
   }
 
-  const total = missionPending.length + (notebooks?.length ?? 0) + assessmentPending.length;
+  const total = missionRows.length + (notebooks?.length ?? 0) + assessmentPending.length;
 
   return (
     <>
       <PageHeader
         eyebrow="Professor • Revisar"
         title="Correções"
-        description="Revise respostas abertas, Caderno Plumareli e registre resultados de avaliações. Questões objetivas com gabarito continuam sendo conferidas automaticamente."
+        description="Revise respostas abertas, Caderno Plumareli e registre resultados de avaliações. Entregas objetivas corrigidas automaticamente também ficam visíveis aqui."
       />
       {params.erro && <div className="form-message form-error">{params.erro}</div>}
       {params.sucesso && <div className="form-message form-success">{params.sucesso}</div>}
 
-      <div className="notice">A automação vale somente para múltipla escolha e verdadeiro/falso com gabarito. Respostas abertas, Caderno Plumareli e resultados de avaliação permanecem sob decisão do professor.</div>
+      <div className="notice">A automação vale somente para múltipla escolha e verdadeiro/falso com gabarito. Entregas corrigidas automaticamente permanecem visíveis abaixo para confirmação do professor.</div>
 
       {total ? (
         <div className="form-stack mt-16">
-          {missionPending.map((submission: any) => {
+          {missionRows.map((submission: any) => {
             const assignment = submission.mission_students;
             const dueAt = assignment?.due_at;
             const autoAnswers = (submission.answers ?? []).filter((answer: any) => answer.reviewed_at && answer.score != null);
             const autoScore = autoAnswers.length ? Math.round((autoAnswers.reduce((sum: number, answer: any) => sum + Number(answer.score), 0) / autoAnswers.length) * 100) : null;
+            const completed = submission.review_status === "reviewed" && !(submission.answers ?? []).some((answer: any) => !answer.reviewed_at);
             return (
               <section className="panel" key={submission.id}>
                 <div className="panel-head">
@@ -92,12 +96,15 @@ export default async function CorrectionsPage({ searchParams }: { searchParams: 
                     <div className="flex gap-8 wrap">
                       <Badge tone="pink">{submission.students?.preferred_name || submission.students?.full_name || "Aluno"}</Badge>
                       <Badge tone={deliveryTone(submission.submitted_at, dueAt)}>{deliveryLabel(submission.submitted_at, dueAt)}</Badge>
+                      {completed && <Badge tone="green">Entrega recebida · correção concluída</Badge>}
                       {autoScore != null && <Badge tone="green">Objetivas: {autoScore}%</Badge>}
                     </div>
                     <h2>{assignment?.missions?.title || "Missão"}</h2>
                     <p>Enviada em {dt(submission.submitted_at)}{dueAt ? ` · prazo ${dt(dueAt)}` : ""}</p>
                   </div>
                 </div>
+
+                {completed ? <div className="notice"><strong>Entrega confirmada.</strong> Esta missão já foi recebida e não exige correção manual.</div> : null}
 
                 {(submission.answers ?? []).map((answer: any) => {
                   const question = answer.mission_questions;
