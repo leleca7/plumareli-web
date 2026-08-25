@@ -1,31 +1,66 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentStudent } from "@/lib/student";
+import type { MissionSubmitResult } from "@/components/student-mission-form";
 
-export async function submitMission(formData: FormData) {
+async function existingSubmission(supabase: any, missionStudentId: string) {
+  const { data } = await supabase
+    .from("submissions")
+    .select("id")
+    .eq("mission_student_id", missionStudentId)
+    .order("submitted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ? String(data.id) : undefined;
+}
+
+export async function submitMission(formData: FormData): Promise<MissionSubmitResult> {
   const { student, supabase } = await getCurrentStudent();
-  if (!student) redirect("/aluno");
+  if (!student) return { ok: false, message: "Não foi possível identificar o aluno." };
 
   const missionStudentId = String(formData.get("missionStudentId") || "");
+  if (!missionStudentId) return { ok: false, message: "Não foi possível identificar esta missão." };
 
-  const { data: assignment } = await supabase
+  const { data: assignment, error: assignmentError } = await supabase
     .from("mission_students")
     .select("id,mission_id,student_id,status")
     .eq("id", missionStudentId)
     .eq("student_id", student.id)
-    .single();
+    .maybeSingle();
 
-  if (!assignment) redirect("/aluno/missoes");
-  if (assignment.status === "submitted" || assignment.status === "reviewed") redirect("/aluno/missoes");
+  if (assignmentError || !assignment) {
+    return { ok: false, message: "Esta missão não está disponível para envio." };
+  }
 
-  const { data: questions } = await supabase
+  if (assignment.status === "submitted" || assignment.status === "reviewed") {
+    return {
+      ok: true,
+      message: "Esta missão já foi enviada e está salva com segurança.",
+      event: await existingSubmission(supabase, assignment.id),
+    };
+  }
+
+  const { data: questions, error: questionError } = await supabase
     .from("mission_questions")
     .select("id")
     .eq("mission_id", assignment.mission_id)
     .order("position");
 
+  if (questionError) {
+    return { ok: false, message: "Não foi possível conferir as questões desta missão." };
+  }
+
+  const answers = (questions ?? []).map((q) => ({
+    questionId: q.id,
+    answerText: String(formData.get(`answer_${q.id}`) || "").trim(),
+  }));
+
+  if (answers.some((answer) => !answer.answerText)) {
+    return { ok: false, message: "Responda todas as questões antes de enviar." };
+  }
+
+  const submittedAt = new Date().toISOString();
   const { data: submission, error } = await supabase
     .from("submissions")
     .insert({
@@ -33,26 +68,30 @@ export async function submitMission(formData: FormData) {
       student_id: student.id,
       status: "submitted",
       review_status: "pending",
-      submitted_at: new Date().toISOString(),
+      submitted_at: submittedAt,
     })
     .select("id")
     .single();
 
   if (error || !submission) {
-    redirect(`/aluno/missoes/${missionStudentId}?erro=` + encodeURIComponent(error?.message || "Não foi possível enviar."));
+    if (error?.code === "23505") {
+      const event = await existingSubmission(supabase, assignment.id);
+      if (event) return { ok: true, message: "Esta missão já foi enviada e está salva com segurança.", event };
+    }
+    return { ok: false, message: error?.message || "Não foi possível enviar a atividade." };
   }
 
-  const answers = (questions ?? []).map((q) => ({
-    submission_id: submission.id,
-    question_id: q.id,
-    answer_text: String(formData.get(`answer_${q.id}`) || ""),
-  }));
-
   if (answers.length) {
-    const { error: answerError } = await supabase.from("answers").insert(answers);
+    const { error: answerError } = await supabase.from("answers").insert(
+      answers.map((answer) => ({
+        submission_id: submission.id,
+        question_id: answer.questionId,
+        answer_text: answer.answerText,
+      })),
+    );
     if (answerError) {
       await supabase.from("submissions").delete().eq("id", submission.id);
-      redirect(`/aluno/missoes/${missionStudentId}?erro=` + encodeURIComponent(answerError.message));
+      return { ok: false, message: answerError.message || "Não foi possível salvar todas as respostas." };
     }
   }
 
@@ -89,7 +128,5 @@ export async function submitMission(formData: FormData) {
       ? "Missão enviada!"
       : `Missão enviada e corrigida automaticamente: ${score}% nas questões objetivas.`;
 
-  const query = new URLSearchParams({ sucesso: message, evento: submission.id });
-  if (newAchievements > 0) query.set("conquistas", String(newAchievements));
-  redirect(`/aluno/missoes?${query.toString()}`);
+  return { ok: true, message, event: submission.id, achievements: newAchievements };
 }
