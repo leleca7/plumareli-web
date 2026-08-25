@@ -49,6 +49,7 @@ export function PrivateFamilyUploadForm({
     setBusy(true);
     setError("");
     let uploadedPath = "";
+    let actionStarted = false;
     try {
       const value = formData.get(fileField);
       const file = value instanceof File && value.size > 0 ? value : null;
@@ -79,14 +80,21 @@ export function PrivateFamilyUploadForm({
       }
 
       formData.delete(fileField);
+      actionStarted = true;
       await action(formData);
     } catch (err) {
-      if (uploadedPath) {
+      if (uploadedPath && !actionStarted) {
         const supabase = createClient();
         await supabase.storage.from("family-uploads").remove([uploadedPath]);
       }
       setBusy(false);
-      setError(err instanceof Error ? err.message : "Não foi possível concluir o envio.");
+      setError(
+        actionStarted
+          ? "O envio foi iniciado, mas a tela não recebeu a confirmação. Atualize a página para conferir antes de tentar novamente; o arquivo foi preservado."
+          : err instanceof Error
+            ? err.message
+            : "Não foi possível concluir o envio.",
+      );
     }
   }
 
