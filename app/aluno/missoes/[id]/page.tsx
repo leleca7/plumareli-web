@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCurrentStudent } from "@/lib/student";
 import { Badge } from "@/components/ui";
+import { StudentMissionForm } from "@/components/student-mission-form";
 import { submitMission } from "./actions";
 
 export default async function StudentMissionPage({
@@ -43,7 +44,7 @@ export default async function StudentMissionPage({
 
       {query.erro && <div className="form-message form-error">{query.erro}</div>}
 
-      <form action={submitMission}>
+      <StudentMissionForm action={submitMission} missionStudentId={assignment.id}>
         <input type="hidden" name="missionStudentId" value={assignment.id} />
 
         <section className="panel family-highlight">
@@ -85,7 +86,7 @@ export default async function StudentMissionPage({
         <button className="button button-primary button-block" type="submit">
           Terminei — enviar para o professor
         </button>
-      </form>
+      </StudentMissionForm>
     </>
   );
 }
