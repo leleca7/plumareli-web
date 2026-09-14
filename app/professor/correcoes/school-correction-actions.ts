@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getCurrentTeacher } from "@/lib/teacher";
 
+const FORM_PATH = "/professor/correcoes/escola";
+
+function formError(message: string): never {
+  redirect(`${FORM_PATH}?erro=${encodeURIComponent(message)}`);
+}
+
 function activityDate(value: string) {
   if (!value) return new Date().toISOString();
   const date = new Date(`${value}T18:00:00-03:00`);
@@ -35,10 +41,10 @@ export async function registerSchoolCorrection(formData: FormData) {
     nextStep: String(formData.get("nextStep") || ""),
   });
 
-  if (!parsed.success) redirect(`/professor/correcoes?erro=${encodeURIComponent("Revise os dados da correção da atividade escolar.")}`);
+  if (!parsed.success) formError("Revise os dados da correção da atividade escolar.");
 
   const { teacher, supabase } = await getCurrentTeacher();
-  if (!teacher) redirect("/professor/correcoes");
+  if (!teacher) redirect(FORM_PATH);
 
   const { data: link, error: linkError } = await supabase
     .from("teacher_students")
@@ -48,11 +54,11 @@ export async function registerSchoolCorrection(formData: FormData) {
     .eq("active", true)
     .maybeSingle();
 
-  if (linkError || !link) redirect(`/professor/correcoes?erro=${encodeURIComponent("Este aluno não está mais vinculado a você.")}`);
+  if (linkError || !link) formError("Este aluno não está mais vinculado a você.");
 
   if (parsed.data.subjectId) {
     const { data: subject } = await supabase.from("subjects").select("id").eq("id", parsed.data.subjectId).eq("active", true).maybeSingle();
-    if (!subject) redirect(`/professor/correcoes?erro=${encodeURIComponent("A matéria selecionada não está disponível.")}`);
+    if (!subject) formError("A matéria selecionada não está disponível.");
   }
 
   const studentRelation: any = (link as any).students;
@@ -78,7 +84,7 @@ export async function registerSchoolCorrection(formData: FormData) {
     publish_at: now,
   }).select("id").single();
 
-  if (activityError || !activity) redirect(`/professor/correcoes?erro=${encodeURIComponent("Não foi possível criar o registro da atividade escolar.")}`);
+  if (activityError || !activity) formError("Não foi possível criar o registro da atividade escolar.");
 
   const assignmentPayload: Record<string, unknown> = {
     activity_id: activity.id,
@@ -97,7 +103,7 @@ export async function registerSchoolCorrection(formData: FormData) {
   const { error: assignmentError } = await supabase.from("notebook_assignments").insert(assignmentPayload);
   if (assignmentError) {
     await supabase.from("notebook_activities").delete().eq("id", activity.id).eq("created_by_teacher_id", teacher.id);
-    redirect(`/professor/correcoes?erro=${encodeURIComponent("O registro foi iniciado, mas a devolutiva não pôde ser vinculada ao aluno. A criação foi revertida.")}`);
+    formError("O registro foi iniciado, mas a devolutiva não pôde ser vinculada ao aluno. A criação foi revertida.");
   }
 
   revalidatePath("/professor");
