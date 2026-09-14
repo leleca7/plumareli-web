@@ -2,6 +2,11 @@ import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { getFamilyPortal } from "@/lib/family";
 
 function percent(value: number) { return `${Math.max(0, Math.min(100, Math.round(value)))}%`; }
+function numericScore(value: unknown) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
 
 export default async function FamilyProgressPage({ searchParams }: { searchParams: Promise<{ aluno?: string }> }) {
   const query = await searchParams;
@@ -10,8 +15,8 @@ export default async function FamilyProgressPage({ searchParams }: { searchParam
   if (!selectedChild.can_view_progress) return <EmptyState title="Acompanhamento restrito" description="Este vínculo familiar não possui permissão para visualizar o progresso pedagógico." />;
 
   const [{ data: missions }, { data: notebooks }, { data: states }, { data: assessments }, { data: contents }] = await Promise.all([
-    supabase.from("mission_students").select("status,started_at,completed_at,after_score,missions(subjects(name))").eq("student_id", selectedChild.student_id).limit(150),
-    supabase.from("notebook_assignments").select("status,submitted_at,score,notebook_activities(subjects(name))").eq("student_id", selectedChild.student_id).limit(150),
+    supabase.from("mission_students").select("status,started_at,completed_at,after_score,missions(title,subjects(name))").eq("student_id", selectedChild.student_id).limit(150),
+    supabase.from("notebook_assignments").select("status,submitted_at,updated_at,score,teacher_note,notebook_activities(title,subjects(name))").eq("student_id", selectedChild.student_id).limit(150),
     supabase.from("student_skill_states").select("domain_level,autonomy_level,evidence_count,trend,priority,skills(name)").eq("student_id", selectedChild.student_id).order("updated_at", { ascending: false }).limit(120),
     supabase.from("assessment_students").select("status,score,submitted_at,reviewed_at,assessments(title,scheduled_for,subjects(name))").eq("student_id", selectedChild.student_id).limit(80),
     supabase.from("student_current_contents").select("confirmed,is_manual,subjects(name),contents(name)").eq("student_id", selectedChild.student_id).eq("active", true).limit(30),
@@ -26,9 +31,9 @@ export default async function FamilyProgressPage({ searchParams }: { searchParam
   const reviewedNotebookRows = notebookRows.filter((item) => item.status === "reviewed");
   const concluded = completedMissionRows.length + reviewedNotebookRows.length;
   const scores = [
-    ...completedMissionRows.map((item) => Number(item.after_score)).filter(Number.isFinite),
-    ...reviewedNotebookRows.map((item) => Number(item.score)).filter(Number.isFinite),
-    ...assessmentRows.map((item) => Number(item.score)).filter(Number.isFinite),
+    ...completedMissionRows.map((item) => numericScore(item.after_score)).filter((value): value is number => value != null),
+    ...reviewedNotebookRows.map((item) => numericScore(item.score)).filter((value): value is number => value != null),
+    ...assessmentRows.map((item) => numericScore(item.score)).filter((value): value is number => value != null),
   ];
   const achievement = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : 0;
 
@@ -45,8 +50,8 @@ export default async function FamilyProgressPage({ searchParams }: { searchParam
 
   const subjectScores = new Map<string, number[]>();
   const addSubjectScore = (subject: string | undefined, score: unknown) => {
-    const value = Number(score);
-    if (!subject || !Number.isFinite(value)) return;
+    const value = numericScore(score);
+    if (!subject || value == null) return;
     const values = subjectScores.get(subject) || [];
     values.push(value);
     subjectScores.set(subject, values);
@@ -57,6 +62,11 @@ export default async function FamilyProgressPage({ searchParams }: { searchParam
   const subjectEvolution = [...subjectScores.entries()]
     .map(([name, values]) => ({ name, score: values.reduce((sum, value) => sum + value, 0) / values.length }))
     .sort((a, b) => b.score - a.score);
+
+  const recentFeedback = reviewedNotebookRows
+    .filter((item) => String(item.teacher_note || "").trim())
+    .sort((a, b) => +new Date(b.updated_at || b.submitted_at || 0) - +new Date(a.updated_at || a.submitted_at || 0))
+    .slice(0, 6);
 
   const now = new Date();
   const nextAssessment = assessmentRows
@@ -100,9 +110,20 @@ export default async function FamilyProgressPage({ searchParams }: { searchParam
 
     <div className="family-dashboard-grid">
       <article className="family-summary-card"><Badge tone="green">Concluídas</Badge><h3>{concluded}</h3><p>Missões e atividades do Caderno já finalizadas.</p></article>
-      <article className="family-summary-card"><Badge tone="blue">Aproveitamento</Badge><h3>{scores.length ? percent(achievement) : "—"}</h3><p>Média das atividades e avaliações com nota disponível.</p></article>
+      <article className="family-summary-card"><Badge tone="blue">Aproveitamento</Badge><h3>{scores.length ? percent(achievement) : "—"}</h3><p>Média somente das atividades e avaliações que realmente possuem nota.</p></article>
       <article className="family-summary-card"><Badge tone="purple">Dias ativos</Badge><h3>{activeDays.size}</h3><p>{activeDays.size === 1 ? "1 dia com atividade registrada." : `${activeDays.size} dias com atividade registrada.`}</p></article>
     </div>
+
+    {recentFeedback.length ? <section className="panel">
+      <div className="panel-head"><div><h2>Últimas devolutivas</h2><p>Aqui aparecem as correções mais recentes, incluindo atividades trazidas da escola.</p></div></div>
+      <div className="form-stack">
+        {recentFeedback.map((item: any, index: number) => <article className="family-upload-card" key={`${item.notebook_activities?.title}-${item.updated_at}-${index}`}>
+          <div className="flex gap-8 wrap"><Badge tone="green">Corrigida</Badge>{item.notebook_activities?.subjects?.name ? <Badge tone="purple">{item.notebook_activities.subjects.name}</Badge> : null}{numericScore(item.score) != null ? <Badge tone="blue">{numericScore(item.score)}%</Badge> : <Badge tone="neutral">Sem nota</Badge>}</div>
+          <h3>{item.notebook_activities?.title || "Atividade corrigida"}</h3>
+          <div className="notice" style={{ whiteSpace: "pre-line" }}>{item.teacher_note}</div>
+        </article>)}
+      </div>
+    </section> : null}
 
     <div className="grid-2 mt-16">
       <section className="panel"><div className="panel-head"><div><h2>Evolução por matéria</h2><p>Usa resultados já revisados, sem inventar nota quando ainda não há avaliação.</p></div></div>{subjectEvolution.length ? <div className="form-stack">{subjectEvolution.map((subject) => <div className="teacher-progress-row" key={subject.name}><div className="flex space-between gap-8"><strong>{subject.name}</strong><span>{percent(subject.score)}</span></div><div className="teacher-progress-track"><span style={{ width: percent(subject.score) }} /></div></div>)}</div> : <EmptyState title="Ainda sem resultados por matéria" description="A evolução aparece quando houver atividades corrigidas ou avaliações com nota." />}</section>
